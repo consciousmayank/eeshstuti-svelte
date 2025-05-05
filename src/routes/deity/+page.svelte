@@ -1,253 +1,367 @@
-<script>
+<script lang="ts">
+	import { B2ImageViewer } from 'b2-image-tools/components';
     import { onMount } from 'svelte';
     import { fade, fly } from 'svelte/transition';
     
     export let data;
     
-    // This would normally come from your data.js or server
-    const deity = {
-      id: 'ganesha',
-      name: 'Lord Ganesha',
-      sanskrit: 'गणेश',
-      description: 'Lord Ganesha, the elephant-headed God, is one of the most worshipped deities in the Hindu pantheon. Known as the remover of obstacles and the god of beginnings, he is invoked before the start of any auspicious work.',
-      longDescription: 'Ganesha is widely revered as the Remover of Obstacles and more generally as Lord of Beginnings and Lord of Obstacles, patron of arts and sciences, and the deva of intellect and wisdom. As the god of beginnings, he is honoured at the start of ceremonies and rituals. Ganesha is also invoked as patron of letters and learning during writing sessions.',
-      image: 'https://images.unsplash.com/photo-1567591414240-e9c0cc916440?q=80&w=1000&auto=format&fit=crop',
-      prayers: [
-        {
-          id: 'ganesh-vandana',
-          title: 'Ganesh Vandana',
-          sanskrit: 'वक्रतुण्ड महाकाय सूर्यकोटि समप्रभ। निर्विघ्नं कुरु मे देव सर्वकार्येषु सर्वदा॥',
-          translation: 'O Lord with the curved trunk and massive body, who has the brilliance of a million suns, please bless me so that there are no obstacles in my endeavors.',
-          audio: '/audio/ganesh-vandana.mp3'
-        },
-        {
-          id: 'ganesh-stotram',
-          title: 'Ganesh Stotram',
-          sanskrit: 'सुमुखश्चैकदन्तश्च कपिलो गजकर्णकः। लम्बोदरश्च विकटो विघ्नराजो गणाधिपः॥',
-          translation: 'The one with a pleasant face, who has one tusk, who has a tawny complexion, who has ears like an elephant, who has a big belly, who has a massive body, the king of obstacles, the Lord of all Ganas.',
-          audio: '/audio/ganesh-stotram.mp3'
-        },
-        {
-          id: 'ganesh-ashtakam',
-          title: 'Ganesh Ashtakam',
-          sanskrit: 'नमस्ते गणपतये त्वमेव प्रत्यक्षं तत्त्वमसि। त्वमेव केवलं कर्तासि। त्वमेव केवलं धर्तासि। त्वमेव केवलं हर्तासि॥',
-          translation: 'Salutations to Lord Ganapati. You alone are the manifest principle. You alone are the creator. You alone are the sustainer. You alone are the destroyer.',
-          audio: '/audio/ganesh-ashtakam.mp3'
-        }
-      ],
-      relatedDeities: ['shiva', 'parvati', 'kartikeya']
-    };
+    // Define interfaces for our data types
+    interface DeityCount {
+        mantra: number;
+        stotram: number;
+        ashtakam: number;
+        prayer: number;
+        total: number;
+    }
+
+    interface Deity {
+        id: string;
+        name: string;
+        description: string;
+        imageName?: string;
+        sanskrit?: string;
+        counts?: DeityCount;
+        prayers?: any[];
+        longDescription?: string;
+        relatedDeities?: string[];
+    }
     
-    let activeTab = 'prayers';
-    let visible = false;
+    interface Prayer {
+        id: string;
+        name: string;
+        type: string;
+        deityId: string;
+        content?: string;
+        translation?: string;
+        deity?: Deity;
+    }
+    
+    // Variables for the all deities grid
+    let deities: Deity[] = [];
+    let loading = true;
+    let error: string | null = null;
+    
+    // Edit modal state variables
+    let showEditModal = false;
+    let editingDeity: Deity | null = null;
+    let editName = '';
+    let editDescription = '';
+    let savingChanges = false;
+    let saveError: string | null = null;
+    
+    // Helper function to truncate text
+    function truncateText(text: string, length = 100): string {
+        if (!text) return '';
+        return text.length > length ? text.substring(0, length) + '...' : text;
+    }
+    
+    // Fetch all deities from the database
+    async function fetchDeities() {
+        try {
+            loading = true;
+            const response = await fetch('/api/deities');
+            if (!response.ok) throw new Error('Failed to load deities');
+            
+            // Get deities data
+            const fetchedDeities: Omit<Deity, 'counts'>[] = await response.json();
+            
+            // Fetch prayers for each deity to count mantras, stotrams, and ashtakams
+            const prayersResponse = await fetch('/api/prayers');
+            if (!prayersResponse.ok) throw new Error('Failed to load prayers');
+            
+            const prayers: Prayer[] = await prayersResponse.json();
+            
+            // Calculate counts for each deity
+            deities = fetchedDeities.map((deity) => {
+                const deityPrayers = prayers.filter((prayer: Prayer) => prayer.deityId === deity.id);
+                
+                const counts: DeityCount = {
+                    mantra: deityPrayers.filter((p: Prayer) => p.type === 'mantra').length,
+                    stotram: deityPrayers.filter((p: Prayer) => p.type === 'stotram').length,
+                    ashtakam: deityPrayers.filter((p: Prayer) => p.type === 'ashtakam').length,
+                    prayer: deityPrayers.filter((p: Prayer) => p.type === 'prayer').length,
+                    total: deityPrayers.length
+                };
+                
+                return {
+                    ...deity,
+                    counts,
+                    description: deity.description || ''
+                };
+            });
+            
+            loading = false;
+        } catch (e: unknown) {
+            console.error('Error fetching deities:', e);
+            error = e instanceof Error ? e.message : 'Unknown error';
+            loading = false;
+        }
+    }
+    
+    // Open edit modal
+    function openEditModal(deity: Deity) {
+        editingDeity = deity;
+        editName = deity.name;
+        editDescription = deity.description;
+        showEditModal = true;
+        saveError = null;
+    }
+    
+    // Close edit modal
+    function closeEditModal() {
+        showEditModal = false;
+        editingDeity = null;
+        saveError = null;
+    }
+    
+    // Save edited deity
+    async function saveDeity() {
+        if (!editingDeity) return;
+        
+        // Validate form fields
+        if (!editName.trim()) {
+            saveError = 'Name cannot be empty';
+            return;
+        }
+        
+        try {
+            savingChanges = true;
+            saveError = null;
+            
+            const response = await fetch(`/api/deities/${editingDeity.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: editName,
+                    description: editDescription
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to update deity');
+            }
+            
+            // Update local deity data
+            const updatedDeity = await response.json();
+            deities = deities.map(d => d.id === editingDeity?.id ? {...d, name: editName, description: editDescription} : d);
+            
+            // Close modal
+            closeEditModal();
+            
+        } catch (e: unknown) {
+            console.error('Error updating deity:', e);
+            saveError = e instanceof Error ? e.message : 'Unknown error';
+        } finally {
+            savingChanges = false;
+        }
+    }
     
     onMount(() => {
-      visible = true;
+        fetchDeities();
     });
-  </script>
+</script>
   
-  <svelte:head>
-    <title>{deity.name} - Eesh-Stuti | Hindu Prayers</title>
-  </svelte:head>
+<svelte:head>
+    <title>Hindu Deities - Eesh-Stuti | Hindu Prayers</title>
+</svelte:head>
   
-  <div class="bg-gradient-to-b from-amber-50 to-orange-50 min-h-screen">
-    
-  
+<div class="bg-gradient-to-b from-amber-50 to-orange-50 min-h-screen">
     <main>
-      <!-- Breadcrumb -->
-      <div class="container mx-auto px-4 py-4">
-        <div class="flex items-center text-sm text-gray-600">
-          <a href="/" class="hover:text-red-800">Home</a>
-          <span class="mx-2">/</span>
-          <a href="/deities" class="hover:text-red-800">Deities</a>
-          <span class="mx-2">/</span>
-          <span class="text-red-800 font-medium">{deity.name}</span>
+        <!-- Breadcrumb -->
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center text-sm text-gray-600">
+                <a href="/" class="hover:text-red-800">Home</a>
+                <span class="mx-2">/</span>
+                <span class="text-red-800 font-medium">Deities</span>
+            </div>
         </div>
-      </div>
-      
-      <!-- Deity Hero -->
-      {#if visible}
+
+        <!-- All Deities Grid Section -->
         <section class="container mx-auto px-4 py-8">
-          <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div class="md:flex">
-              <div class="md:w-1/3" in:fade={{ duration: 800 }}>
-                <img 
-                  src={deity.image || "/placeholder.svg"} 
-                  alt={deity.name} 
-                  class="w-full h-full object-cover"
-                />
-              </div>
-              <div class="md:w-2/3 p-8" in:fly={{ x: 50, duration: 800 }}>
-                <div class="flex items-center gap-3 mb-4">
-                  <h1 class="text-4xl font-bold text-red-800">{deity.name}</h1>
-                  <span class="text-3xl text-red-700">{deity.sanskrit}</span>
+            <h1 class="text-4xl font-bold text-red-800 text-center mb-10">Hindu Deities</h1>
+            
+            {#if loading}
+                <div class="flex items-center justify-center py-12">
+                    <div class="h-8 w-8 animate-spin rounded-full border-2 border-red-600 border-t-transparent"></div>
+                    <span class="ml-2 text-gray-600">Loading deities...</span>
                 </div>
-                <p class="text-xl text-gray-700 mb-6">{deity.description}</p>
-                <div class="bg-amber-50 border border-amber-200 rounded-lg p-6">
-                  <p class="text-gray-800">{deity.longDescription}</p>
+            {:else if error}
+                <div class="mx-auto max-w-md rounded-lg bg-red-100 p-4 text-center text-red-700">
+                    <p>Error loading deities: {error}</p>
                 </div>
-              </div>
-            </div>
-          </div>
+            {:else}
+                <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {#each deities as deity, i}
+                        <div 
+                            class="group overflow-hidden rounded-xl bg-white shadow-lg transition-shadow hover:shadow-xl"
+                            in:fly={{ y: 50, duration: 800, delay: 150 + i * 100 }}
+                        >
+                            <a 
+                                href={`/deity/${deity.id}`}
+                                class="block"
+                            >
+                                <div class="relative h-80 overflow-hidden">
+                                    <B2ImageViewer
+                                        fileName={deity.imageName}
+                                        autoLoad={true}
+                                        showFileName={false}
+                                        width="100%"
+                                        height="auto"
+                                        useApiEndpoint={true}
+                                        on:load={(e) => console.log(`Loaded: ${e.detail.fileName}`)}
+                                        on:error={(e) => console.error(e.detail.error)}
+                                    />
+                                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+                                        <h3 class="text-2xl font-bold text-white">{deity.name}</h3>
+                                        {#if deity.sanskrit}
+                                            <span class="text-amber-200">{deity.sanskrit}</span>
+                                        {/if}
+                                    </div>
+                                </div>
+                            </a>
+                            
+                            <div class="p-5">
+                                <div class="mb-4 flex flex-wrap gap-2">
+                                    {#if deity.counts && deity.counts.mantra > 0}
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-red-800">
+                                            {deity.counts.mantra} Mantras
+                                        </span>
+                                    {/if}
+                                    
+                                    {#if deity.counts && deity.counts.stotram > 0}
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-red-800">
+                                            {deity.counts.stotram} Stotrams
+                                        </span>
+                                    {/if}
+                                    
+                                    {#if deity.counts && deity.counts.ashtakam > 0}
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-red-800">
+                                            {deity.counts.ashtakam} Ashtakams
+                                        </span>
+                                    {/if}
+                                    
+                                    {#if deity.counts && deity.counts.prayer > 0}
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-red-800">
+                                            {deity.counts.prayer} Prayers
+                                        </span>
+                                    {/if}
+                                </div>
+                                
+                                <p class="mb-4 text-gray-700 h-20 ">{truncateText(deity.description, 80)}</p>
+                                
+                                <div class="flex items-center justify-between">
+                                    <a 
+                                        href={`/deity/${deity.id}`}
+                                        class="inline-block font-medium text-red-800 group-hover:text-red-600 group-hover:underline"
+                                    >
+                                        View Details →
+                                    </a>
+                                    
+                                    <button 
+                                        on:click|stopPropagation={(e) => {
+                                            e.preventDefault();
+                                            openEditModal(deity);
+                                        }}
+                                        class="rounded bg-amber-100 px-3 py-1 text-sm font-medium text-red-800 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                                    >
+                                        Edit
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
         </section>
-      {/if}
-      
-      <!-- Tabs -->
-      <section class="container mx-auto px-4 py-8">
-        <div class="flex border-b border-gray-300 mb-8">
-          <button 
-            class={`py-3 px-6 font-medium ${activeTab === 'prayers' ? 'text-red-800 border-b-2 border-red-800' : 'text-gray-600 hover:text-red-800'}`}
-            on:click={() => activeTab = 'prayers'}
-          >
-            Prayers & Mantras
-          </button>
-          <button 
-            class={`py-3 px-6 font-medium ${activeTab === 'stories' ? 'text-red-800 border-b-2 border-red-800' : 'text-gray-600 hover:text-red-800'}`}
-            on:click={() => activeTab = 'stories'}
-          >
-            Stories & Legends
-          </button>
-          <button 
-            class={`py-3 px-6 font-medium ${activeTab === 'gallery' ? 'text-red-800 border-b-2 border-red-800' : 'text-gray-600 hover:text-red-800'}`}
-            on:click={() => activeTab = 'gallery'}
-          >
-            Gallery
-          </button>
-        </div>
-        
-        <!-- Prayers Tab -->
-        {#if activeTab === 'prayers'}
-          <div class="space-y-8">
-            {#each deity.prayers as prayer, i}
-              <div 
-                class="bg-white rounded-xl shadow-md overflow-hidden"
-                in:fly={{ y: 20, duration: 500, delay: i * 150 }}
-              >
-                <div class="p-6">
-                  <h3 class="text-2xl font-bold text-red-800 mb-4">{prayer.title}</h3>
-                  <div class="bg-amber-50 rounded-lg p-4 mb-4 border border-amber-200">
-                    <p class="text-lg font-medium text-red-700">{prayer.sanskrit}</p>
-                  </div>
-                  <div class="mb-6">
-                    <h4 class="text-sm uppercase text-gray-500 mb-2">Translation</h4>
-                    <p class="text-gray-800">{prayer.translation}</p>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <button class="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-lg transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                      </svg>
-                      Listen to Prayer
-                    </button>
-                    <button class="flex items-center gap-2 text-gray-600 hover:text-red-800 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
-                      </svg>
-                      Share
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        
-        <!-- Stories Tab -->
-        {#if activeTab === 'stories'}
-          <div class="bg-white rounded-xl shadow-md p-6" in:fade>
-            <h3 class="text-2xl font-bold text-red-800 mb-4">The Birth of Ganesha</h3>
-            <p class="text-gray-800 mb-4">
-              Once, Goddess Parvati was preparing for a bath and needed someone to guard the entrance. She created a boy from the turmeric paste she was using and breathed life into him, instructing him to guard the door and not let anyone in.
-            </p>
-            <p class="text-gray-800 mb-4">
-              When Lord Shiva returned, he was stopped by the boy. Shiva, unaware that this was his son created by Parvati, became angry and in a fit of rage, severed the boy's head with his trident.
-            </p>
-            <p class="text-gray-800 mb-4">
-              When Parvati learned what had happened, she was devastated and furious. To appease her, Shiva promised to revive the boy. He sent his followers to bring back the head of the first creature they encountered facing north. They returned with an elephant's head, which Shiva attached to the boy's body, bringing him back to life.
-            </p>
-            <p class="text-gray-800">
-              Shiva then declared that the boy would be known as Ganesha, the lord of his followers, and that he would be worshipped before all other gods.
-            </p>
-          </div>
-        {/if}
-        
-        <!-- Gallery Tab -->
-        {#if activeTab === 'gallery'}
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" in:fade>
-            <div class="bg-white rounded-lg overflow-hidden shadow-md">
-              <img 
-                src="https://images.unsplash.com/photo-1621847468516-1ed5d0df56fe?q=80&w=1000&auto=format&fit=crop" 
-                alt="Ganesha Statue" 
-                class="w-full h-64 object-cover"
-              />
-              <div class="p-4">
-                <p class="text-gray-700">Ancient Ganesha statue from South India</p>
-              </div>
-            </div>
-            <div class="bg-white rounded-lg overflow-hidden shadow-md">
-              <img 
-                src="https://images.unsplash.com/photo-1623604427799-d1a8ad8e5dda?q=80&w=1000&auto=format&fit=crop" 
-                alt="Ganesha Painting" 
-                class="w-full h-64 object-cover"
-              />
-              <div class="p-4">
-                <p class="text-gray-700">Traditional Ganesha painting</p>
-              </div>
-            </div>
-            <div class="bg-white rounded-lg overflow-hidden shadow-md">
-              <img 
-                src="https://images.unsplash.com/photo-1633889604211-f70a47dac0b0?q=80&w=1000&auto=format&fit=crop" 
-                alt="Ganesha Festival" 
-                class="w-full h-64 object-cover"
-              />
-              <div class="p-4">
-                <p class="text-gray-700">Ganesh Chaturthi celebration</p>
-              </div>
-            </div>
-          </div>
-        {/if}
-      </section>
-      
-      <!-- Related Deities -->
-      <section class="container mx-auto px-4 py-12">
-        <h2 class="text-2xl font-bold text-red-800 mb-6">Related Deities</h2>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <a href="/deity/shiva" class="bg-white rounded-lg p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
-            <img 
-              src="https://images.unsplash.com/photo-1627925234574-f90f39d8f256?q=80&w=200&auto=format&fit=crop" 
-              alt="Lord Shiva" 
-              class="w-12 h-12 rounded-full object-cover"
-            />
-            <span class="font-medium text-gray-800">Lord Shiva</span>
-          </a>
-          <a href="/deity/parvati" class="bg-white rounded-lg p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
-            <img 
-              src="https://images.unsplash.com/photo-1617575521317-d2974f3b56d2?q=80&w=200&auto=format&fit=crop" 
-              alt="Goddess Parvati" 
-              class="w-12 h-12 rounded-full object-cover"
-            />
-            <span class="font-medium text-gray-800">Goddess Parvati</span>
-          </a>
-          <a href="/deity/kartikeya" class="bg-white rounded-lg p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
-            <img 
-              src="https://images.unsplash.com/photo-1617575521317-d2974f3b56d2?q=80&w=200&auto=format&fit=crop" 
-              alt="Lord Kartikeya" 
-              class="w-12 h-12 rounded-full object-cover"
-            />
-            <span class="font-medium text-gray-800">Lord Kartikeya</span>
-          </a>
-        </div>
-      </section>
     </main>
-  
-    
-  </div>
-  
-  <style>
+</div>
+
+<!-- Edit Deity Modal -->
+{#if showEditModal}
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" transition:fade={{ duration: 200 }}>
+        <div 
+            class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            in:fly={{ y: 20, duration: 300 }}
+        >
+            <div class="mb-6 flex items-center justify-between">
+                <h2 class="text-xl font-bold text-gray-800">Edit Deity</h2>
+                <button 
+                    on:click={closeEditModal}
+                    class="text-gray-500 hover:text-gray-700 focus:outline-none"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            {#if saveError}
+                <div class="mb-4 rounded-md bg-red-100 p-3 text-sm text-red-700">
+                    {saveError}
+                </div>
+            {/if}
+            
+            <form on:submit|preventDefault={saveDeity}>
+                <div class="mb-4">
+                    <label for="deityName" class="mb-1 block text-sm font-medium text-gray-700">Name</label>
+                    <input 
+                        type="text" 
+                        id="deityName" 
+                        bind:value={editName} 
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                        required
+                    />
+                </div>
+                
+                <div class="mb-6">
+                    <label for="deityDescription" class="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                    <textarea 
+                        id="deityDescription" 
+                        bind:value={editDescription} 
+                        rows="4"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    ></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button 
+                        type="button" 
+                        on:click={closeEditModal}
+                        class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        disabled={savingChanges}
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="submit"
+                        class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        disabled={savingChanges}
+                    >
+                        {#if savingChanges}
+                            <span class="flex items-center">
+                                <svg class="mr-2 h-4 w-4 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Saving...
+                            </span>
+                        {:else}
+                            Save Changes
+                        {/if}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
     
     :global(body) {
-      font-family: 'Poppins', sans-serif;
-      color: #4b5563;
+        font-family: 'Poppins', sans-serif;
+        color: #4b5563;
     }
-  </style>
+</style>

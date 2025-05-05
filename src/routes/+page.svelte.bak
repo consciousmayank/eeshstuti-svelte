@@ -2,8 +2,6 @@
 	import { onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import UnSplashAttribution from '../components/UnSplash-attribution.svelte';
-	import { B2ImageViewer } from 'b2-image-tools/components';
-	let imageFileName = 'file_1745716233634.jpeg';
 
 	// Get data from page load function
 	export let data;
@@ -26,7 +24,7 @@
 		sanskrit?: string;
 		counts: DeityCount;
 	}
-
+	
 	interface Prayer {
 		id: string;
 		name: string;
@@ -48,20 +46,20 @@
 			loading = true;
 			const response = await fetch('/api/deities');
 			if (!response.ok) throw new Error('Failed to load deities');
-
+			
 			// Get deities data
 			const fetchedDeities: Omit<Deity, 'counts'>[] = await response.json();
-
+			
 			// Fetch prayers for each deity to count mantras, stotrams, and ashtakams
 			const prayersResponse = await fetch('/api/prayers');
 			if (!prayersResponse.ok) throw new Error('Failed to load prayers');
-
+			
 			const prayers: Prayer[] = await prayersResponse.json();
-
+			
 			// Calculate counts for each deity
 			deities = fetchedDeities.map((deity) => {
 				const deityPrayers = prayers.filter((prayer: Prayer) => prayer.deityId === deity.id);
-
+				
 				const counts: DeityCount = {
 					mantra: deityPrayers.filter((p: Prayer) => p.type === 'mantra').length,
 					stotram: deityPrayers.filter((p: Prayer) => p.type === 'stotram').length,
@@ -69,14 +67,14 @@
 					prayer: deityPrayers.filter((p: Prayer) => p.type === 'prayer').length,
 					total: deityPrayers.length
 				};
-
+				
 				return {
 					...deity,
 					counts,
 					description: deity.description || ''
 				};
 			});
-
+			
 			loading = false;
 		} catch (e: unknown) {
 			console.error('Error fetching deities:', e);
@@ -89,7 +87,7 @@
 		visible = true;
 		fetchDeities();
 	});
-
+	
 	// Helper function to truncate text
 	function truncateText(text: string, length = 100): string {
 		if (!text) return '';
@@ -102,25 +100,16 @@
 </svelte:head>
 
 <div class="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50">
+
 	<main>
 		<!-- Hero Section -->
 		<section class="relative flex h-[70vh] items-center justify-center overflow-hidden">
 			<div class="absolute inset-0 z-0">
-				<B2ImageViewer
-					fileName={imageFileName}
-					autoLoad={true}
-					showFileName={false}
-					width="100%"
-					height="auto"
-					useApiEndpoint={true}
-					on:load={(e) => console.log(`Loaded: ${e.detail.fileName}`)}
-					on:error={(e) => console.error(e.detail.error)}
-				/>
-				<!-- <UnSplashAttribution
+				<UnSplashAttribution
 					src="https://images.unsplash.com/photo-1603766806347-54cdf3745953?q=80&w=3540&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
 					alt="Temple Background"
-					photographUrl="<a href="https://unsplash.com/@rk_root?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Ramakrishnan Nataraj</a> on <a href="https://unsplash.com/photos/brown-concrete-building-during-daytime-SzMR1Vcf5aw?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>"
-				/> -->
+					photographUrl='<a href="https://unsplash.com/@rk_root?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Ramakrishnan Nataraj</a> on <a href="https://unsplash.com/photos/brown-concrete-building-during-daytime-SzMR1Vcf5aw?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>'
+				/>
 				<div class="absolute inset-0 bg-gradient-to-b from-transparent to-amber-50"></div>
 			</div>
 
@@ -169,15 +158,10 @@
 						class="overflow-hidden rounded-xl bg-white shadow-lg transition-shadow hover:shadow-xl"
 						in:fly={{ y: 50, duration: 800, delay: 300 + i * 200 }}
 					>
-						<B2ImageViewer
-							fileName="file_1745714659529.jpeg"
-							autoLoad={true}
-							showFileName={false}
-							width="100%"
-							height="auto"
-							useApiEndpoint={true}
-							on:load={(e) => console.log(`Loaded: ${e.detail.fileName}`)}
-							on:error={(e) => console.error(e.detail.error)}
+						<img
+							src={deity.image || '/placeholder.svg'}
+							alt={deity.name}
+							class="h-64 w-full object-cover"
 						/>
 						<div class="p-6">
 							<h3 class="mb-2 text-2xl font-bold text-red-800">{deity.name}</h3>
@@ -231,6 +215,7 @@
 			</div>
 		</section>
 	</main>
+
 </div>
 
 <style>

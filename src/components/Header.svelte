@@ -47,17 +47,18 @@
 <header class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg">
 	<div class="container mx-auto flex items-center justify-between px-4 py-6">
 		<div class="flex items-center gap-3">
-			<!-- <img
-				src="https://img.icons8.com/color/96/000000/om-symbol.png"
-				alt="Om Symbol"
-				class="h-10 w-10"
-			/> -->
-			<Om />
+			<div class="h-10 w-10 filter-white">
+				<UnSplashAttribution
+					src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Om_symbol.svg/1920px-Om_symbol.svg.png"
+					alt="Om Symbol"
+					photographUrl='By <a href="https://en.wikipedia.org/wiki/The_Unicode_Consortium" class="extiw" title="w:The Unicode Consortium">The Unicode Consortium</a> - Unknown source, Public Domain, <a href="https://commons.wikimedia.org/w/index.php?curid=3191831">Link</a>'
+				/>
+			</div>
 			<h1 class="text-2xl font-bold">Eesh-Stuti</h1>
 		</div>
 		<nav class="hidden gap-6 md:flex">
 			<a href="/" class="font-medium transition-colors hover:text-amber-200">Home</a>
-			<a href="/deities" class="font-medium transition-colors hover:text-amber-200">Deities</a>
+			<a href="/deity" class="font-medium transition-colors hover:text-amber-200">Deities</a>
 			<a href="/prayers" class="font-medium transition-colors hover:text-amber-200">Prayers</a>
 			<a href="/about" class="font-medium transition-colors hover:text-amber-200">About</a>
 		</nav>
