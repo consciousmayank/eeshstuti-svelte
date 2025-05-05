@@ -19,7 +19,7 @@
 		"setup:db": "npm run prisma:migrate && npm run prisma:seed"
 	},
 	"devDependencies": {
-		"@sveltejs/adapter-static": "^3.0.8",
+		"@sveltejs/adapter-node": "^5.2.12",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/forms": "^0.5.9",
